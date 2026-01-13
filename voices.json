@@ -1,0 +1,106 @@
+{
+  "default": {
+    "prompt_audio": "reference/basic_ref_zh.wav",
+    "prompt_text": "对，这就是我，万人敬仰的太乙真人。"
+  },
+  "ben_promptvn": {
+    "prompt_audio": "reference/Ben_promptvn.wav",
+    "prompt_text": "So it may be that you would prefer to forego my secret rather than consent to becoming a prisoner here for what might be several days.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/Ben_promptvn.wav"
+  },
+  "common_voice_en_63703": {
+    "prompt_audio": "reference/common_voice_en_63703.wav",
+    "prompt_text": "They're calling to us not to give up and to keep on fighting.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/common_voice_en_63703.wav"
+  },
+  "common_voice_en_188092": {
+    "prompt_audio": "reference/common_voice_en_188092.wav",
+    "prompt_text": "This man looked exactly the same, except that now the roles were reversed.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/common_voice_en_188092.wav"
+  },
+  "trump_promptvn": {
+    "prompt_audio": "reference/trump_promptvn.wav",
+    "prompt_text": "In short, we embarked on a mission to make America great again for all Americans.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/trump_promptvn.wav"
+  },
+  "00004509-00000108": {
+    "prompt_audio": "reference/00004509-00000108.wav",
+    "prompt_text": "梁永祥又如何与创业挑战面对面对决？",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/00004509-00000108.wav"
+  },
+  "00004517-00000040": {
+    "prompt_audio": "reference/00004517-00000040.wav",
+    "prompt_text": "多云有阵雨，暴雷有大风。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/00004517-00000040.wav"
+  },
+  "dehua_promptvn": {
+    "prompt_audio": "reference/dehua_promptvn.wav",
+    "prompt_text": "所以我觉得这些成功的电影他都很真诚，而且很有生命力。他就跟当年的那个0号的那个一模一样。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/dehua_promptvn.wav"
+  },
+  "jialing_promptvn": {
+    "prompt_audio": "reference/jialing_promptvn.wav",
+    "prompt_text": "跟观众分享我人生的感悟。因为我们都是只活一次，我们也都是第一次活，我们也不知道该怎么活着。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/zeroshot/prompt/jialing_promptvn.wav"
+  },
+  "angry_en_prompt": {
+    "prompt_audio": "reference/angry_en_prompt.wav",
+    "prompt_text": "Enough,you a foolish chatter.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/angry_en_prompt.wav"
+  },
+  "angry_zh_prompt": {
+    "prompt_audio": "reference/angry_zh_prompt.wav",
+    "prompt_text": "我不会牺牲我的健康来换取金钱的。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/angry_zh_prompt.wav"
+  },
+  "happy_en_prompt": {
+    "prompt_audio": "reference/happy_en_prompt.wav",
+    "prompt_text": "Because he was a man with infinite resource and sagacity.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/happy_en_prompt.wav"
+  },
+  "happy_zh_prompt": {
+    "prompt_audio": "reference/happy_zh_prompt.wav",
+    "prompt_text": "我太喜欢听了，所以不断重复着听。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/happy_zh_prompt.wav"
+  },
+  "sad_en_prompt": {
+    "prompt_audio": "reference/sad_en_prompt.wav",
+    "prompt_text": "Give me your hand, or I will cry harder than before.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/sad_en_prompt.wav"
+  },
+  "sad_zh_prompt": {
+    "prompt_audio": "reference/sad_zh_prompt.wav",
+    "prompt_text": "如果她拒绝我，我会死的。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/sad_zh_prompt.wav"
+  },
+  "surprised_en_prompt": {
+    "prompt_audio": "reference/surprised_en_prompt.wav",
+    "prompt_text": "A lady, is on Alice's lap!",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/surprised_en_prompt.wav"
+  },
+  "surprised_zh_prompt": {
+    "prompt_audio": "reference/surprised_zh_prompt.wav",
+    "prompt_text": "真想不到，游泳竟有如此多的好处。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/emotion/surprised_zh_prompt.wav"
+  },
+  "prompt_wujing": {
+    "prompt_audio": "reference/prompt_wujing.wav",
+    "prompt_text": "坦克你没有后视镜的，枪炮是不长眼的，还有黑哥们儿的语言是不通的。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/math/prompt/prompt_wujing.wav"
+  },
+  "prompt_meiyangyang": {
+    "prompt_audio": "reference/prompt_meiyangyang.wav",
+    "prompt_text": "沸羊羊，你吃东西能不能斯文一点啊？",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/math/prompt/prompt_meiyangyang.wav"
+  },
+  "prompt": {
+    "prompt_audio": "reference/prompt.wav",
+    "prompt_text": "Just by listening a few minutes a day, you'll be able to eliminate negative thoughts by conditioning your mind to be more positive.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/phoneme/prompt/prompt.wav"
+  },
+  "prompt_cai": {
+    "prompt_audio": "reference/prompt_cai.wav",
+    "prompt_text": "你干嘛哎哟。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/phoneme/prompt/prompt_cai.wav"
+  }
+}

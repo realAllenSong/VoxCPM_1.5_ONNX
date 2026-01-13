@@ -1,0 +1,18 @@
+{
+  "models_dir": "models/onnx_models_quantized",
+  "voxcpm_dir": "models/VoxCPM1.5",
+  "voice": "default",
+  "prompt_audio": null,
+  "prompt_text": null,
+  "text": [
+    "你好，我是 VoxCPM 1.5B。",
+    "Hello, this is a CPU ONNX test."
+  ],
+  "output": "outputs/demo.wav",
+  "text_normalizer": true,
+  "audio_normalizer": false,
+  "cfg_value": 2.5,
+  "fixed_timesteps": 10,
+  "seed": 1,
+  "max_threads": 0
+}

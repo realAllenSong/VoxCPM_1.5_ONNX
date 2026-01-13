@@ -1,0 +1,8 @@
+numpy
+onnxruntime
+soundfile
+transformers
+tokenizers
+wetext
+regex
+inflect

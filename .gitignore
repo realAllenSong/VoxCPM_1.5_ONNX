@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+models/
+outputs/
+reference/
+clone_reference/
+*.onnx
+*.onnx.data
+*.safetensors
+*.bin
+*.pth
+.DS_Store
