@@ -102,5 +102,110 @@
     "prompt_audio": "reference/prompt_cai.wav",
     "prompt_text": "你干嘛哎哟。",
     "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/phoneme/prompt/prompt_cai.wav"
+  },
+  "context_zh_story_telling": {
+    "prompt_audio": "reference/context_zh_story_telling.wav",
+    "prompt_text": "有这么一个人呐，一个字都不认识，连他自己的名字都不会写，他上京赶考去了。哎，到那儿还就中了，不但中了，而且升来升去呀，还入阁拜相，你说这不是瞎说吗？哪有这个事啊。当然现在是没有这个事，现在你不能替人民办事，人民也不选举你呀！我说这个事情啊，是明朝的这么一段事情。因为在那个社会啊，甭管你有才学没才学，有学问没学问，你有钱没有？有钱，就能做官，捐个官做。说有势力，也能做官。也没钱也没势力，碰上啦，用上这假势力，也能做官，什么叫“假势力”呀，它因为在那个社会呀，那些个做官的人，都怀着一肚子鬼胎，都是这个拍上欺下，疑神疑鬼，你害怕我，我害怕你，互相害怕，这里头就有矛盾啦。由打这个呢，造成很多可笑的事情。今天我说的这段就这么回事。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_1.wav",
+    "style_label": "ZH: story-telling",
+    "category": "context-aware"
+  },
+  "context_zh_storybook": {
+    "prompt_audio": "reference/context_zh_storybook.wav",
+    "prompt_text": "在很久很久以前，有一个国王。他把他的国家治理的非常好，国家不大，但百姓们丰衣足食，安居乐业，十分幸福。国王有三位美丽可爱的小公主，三位小公主们从生下来就具有一种神奇的魔力，当她们哭泣的时候，落下的眼泪会化作一颗颗晶莹剔透的钻石，价值连城。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_2.wav",
+    "style_label": "ZH: storybook",
+    "category": "context-aware"
+  },
+  "context_zh_weather_report": {
+    "prompt_audio": "reference/context_zh_weather_report.wav",
+    "prompt_text": "近日，陕西多地遭遇高温天气。7月15日，全省有8个气象站最高气温突破历史极值，多地发布高温红色预警。16日，多地高温持续，西安、宝鸡、咸阳、渭南、汉中、安康等地达40℃以上。陕西省气象台预计，从17日开始，部分区域将出现分散性降雨，持续多日的高温晴热有望得到缓解。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_3.wav",
+    "style_label": "ZH: weather-report",
+    "category": "context-aware"
+  },
+  "context_zh_a_share_market_news": {
+    "prompt_audio": "reference/context_zh_a_share_market_news.wav",
+    "prompt_text": "各位听众，下午好。这里是“财经快讯”。今日A股三大指数集体收涨，沪指上涨0.8%，重回3100点上方。半导体及人工智能板块表现强势，成交额突破万亿，市场情绪有所回暖。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_4.wav",
+    "style_label": "ZH: a-share-market-news",
+    "category": "context-aware"
+  },
+  "context_zh_documentary_narration": {
+    "prompt_audio": "reference/context_zh_documentary_narration.wav",
+    "prompt_text": "长城，它不仅仅是一道宏伟的砖石防线。它蜿蜒于中国的崇山峻岭之间，见证了数个朝代的兴衰更迭，承载着一个民族坚韧不屈的灵魂与和平的渴望。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_5.wav",
+    "style_label": "ZH: documentary-narration",
+    "category": "context-aware"
+  },
+  "context_zh_advertisement": {
+    "prompt_audio": "reference/context_zh_advertisement.wav",
+    "prompt_text": "还在为孩子的计算能力发愁吗？“智慧数学”APP，采用AI智能互动教学，让学习像玩游戏一样有趣。现在下载，即刻领取新人专属学习大礼包！",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_6.wav",
+    "style_label": "ZH: advertisement",
+    "category": "context-aware"
+  },
+  "context_zh_poetry": {
+    "prompt_audio": "reference/context_zh_poetry.wav",
+    "prompt_text": "君不见，黄河之水天上来，奔流到海不复回。君不见，高堂明镜悲白发，朝如青丝暮成雪。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_7.wav",
+    "style_label": "ZH: poetry",
+    "category": "context-aware"
+  },
+  "context_zh_game_narration": {
+    "prompt_audio": "reference/context_zh_game_narration.wav",
+    "prompt_text": "欢迎来到“源世界”，勇敢的冒险者。在这片被魔法与钢铁撕裂的大陆上，你的每一个选择，都将谱写新的史诗。现在，拿起你的武器，命运的齿轮已经开始转动。",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_zh_8.wav",
+    "style_label": "ZH: game-narration",
+    "category": "context-aware"
+  },
+  "context_en_scientific_explanation": {
+    "prompt_audio": "reference/context_en_scientific_explanation.wav",
+    "prompt_text": "A black hole is a region of spacetime where gravity is so strong that nothing, not even light, can escape. The boundary of this region is called the event horizon. At the center of a black hole is a gravitational singularity, a point of infinite density.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_1.wav",
+    "style_label": "EN: scientific-explanation",
+    "category": "context-aware"
+  },
+  "context_en_business_presentation": {
+    "prompt_audio": "reference/context_en_business_presentation.wav",
+    "prompt_text": "Good morning, everyone. In the next 15 minutes, I'll be outlining our Q3 performance and presenting the strategic roadmap for our next fiscal year. Our key focus will be on market expansion and digital transformation.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_2.wav",
+    "style_label": "EN: business-presentation",
+    "category": "context-aware"
+  },
+  "context_en_casual_voicemail": {
+    "prompt_audio": "reference/context_en_casual_voicemail.wav",
+    "prompt_text": "Hey Sarah, it's Alex. Just calling to see if you're still free for dinner on Friday night. I was thinking of that new Italian place downtown. Give me a call back when you get a chance. Hope you're having a great week!",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_3.wav",
+    "style_label": "EN: casual-voicemail",
+    "category": "context-aware"
+  },
+  "context_en_nature_documentary_narration": {
+    "prompt_audio": "reference/context_en_nature_documentary_narration.wav",
+    "prompt_text": "Deep in the Amazon rainforest, the jaguar, a solitary and powerful predator, moves with silent grace. It is the apex hunter of this ecosystem, a masterpiece of evolution, perfectly adapted to its lush, green world.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_4.wav",
+    "style_label": "EN: nature-documentary-narration",
+    "category": "context-aware"
+  },
+  "context_en_movie_dialogue_epic": {
+    "prompt_audio": "reference/context_en_movie_dialogue_epic.wav",
+    "prompt_text": "We've traveled too far and sacrificed too much to turn back now. This is our last stand. Whatever happens here today, will be remembered for a thousand years. For glory!",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_5.wav",
+    "style_label": "EN: movie-dialogue-epic",
+    "category": "context-aware"
+  },
+  "context_en_rap_lyrics": {
+    "prompt_audio": "reference/context_en_rap_lyrics.wav",
+    "prompt_text": "Check the mic, one two, step into the light. Livin' my story, writin' rhymes through the night. From the bottom to the top, yeah, the grind don't stop. They see me climbin', gonna watch me as I pop. Yeah.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_6.wav",
+    "style_label": "EN: rap-lyrics",
+    "category": "context-aware"
+  },
+  "context_en_singing_an_interesting_case": {
+    "prompt_audio": "reference/context_en_singing_an_interesting_case.wav",
+    "prompt_text": "In the silence of the dawn, I found my strength to carry on. Oh, this love, is a fire in my soul, and it's taking all control.",
+    "source_url": "https://openbmb.github.io/VoxCPM-demopage/audio/textguided/voxcpm/audio_en_8.wav",
+    "style_label": "EN: singing? - an interesting case",
+    "category": "context-aware"
   }
 }

@@ -199,6 +199,28 @@ python infer.py --voice default --text "使用预置音色" --output preset.wav
 
 `download_reference_voices.py` 会从官方 demo page 下载 prompt 音频到 `reference/`，
 并自动写入 `voices.json`（供 `--voice` 使用）。`reference/basic_ref_zh.wav` 为默认音色示例。
+同时会下载官方 **Context-Aware Speech Generation** 示例音频并写入 `voices.json`
+（例如 `context_zh_story_telling`）。
+
+## Context-Aware Speech Generation (w/o prompt speech)
+
+该模式 **不使用 prompt audio**，仅依赖文本本身的语义让模型自动推断语气与风格。
+示例文本已整理在 `context_aware_texts.json`，其中 `type` 只是描述标签 **不作为输入**。
+
+```json
+{
+  "voice": null,
+  "prompt_audio": null,
+  "prompt_text": null,
+  "text": ["在很久很久以前，有一个国王。"]
+}
+```
+
+直接命令行也可：
+
+```bash
+python infer.py --text "在很久很久以前，有一个国王。" --output out.wav
+```
 
 ## Normalizer
 
@@ -236,4 +258,3 @@ python infer.py --audio-normalizer --text "..." --output out.wav
 from IPython.display import Audio
 Audio("outputs/demo.wav")
 ```
-

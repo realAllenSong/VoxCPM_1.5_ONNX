@@ -26,6 +26,12 @@ def clean_text(raw: str) -> str:
     return text.strip()
 
 
+def slugify(label: str) -> str:
+    label = label.lower()
+    label = re.sub(r"[^a-z0-9]+", "_", label)
+    return label.strip("_")
+
+
 def load_existing_voices(path: str) -> dict:
     if not os.path.isfile(path):
         return {}
@@ -91,10 +97,47 @@ def main() -> None:
         entry.setdefault("source_url", url)
         voices[voice_name] = entry
 
+    context_entries = []
+    context_block = re.search(
+        r"<h2[^>]*id=\"context-aware-speech-generation\"[^>]*>.*?</table>",
+        html_text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if context_block:
+        row_pattern = re.compile(
+            r"<tr>\s*<td[^>]*>(?P<type>.*?)</td>\s*<td[^>]*>(?P<text>.*?)</td>\s*"
+            r"<td[^>]*>\s*<audio[^>]*>\s*<source\s+src=\"(?P<src>[^\"]+)\"",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for match in row_pattern.finditer(context_block.group(0)):
+            type_label = clean_text(match.group("type"))
+            text_label = clean_text(match.group("text"))
+            src = match.group("src")
+            if not src:
+                continue
+            context_entries.append((type_label, text_label, src))
+
+    for type_label, prompt_text, src in context_entries:
+        voice_name = f"context_{slugify(type_label)}"
+        url = urllib.parse.urljoin(args.page_url, src)
+        filename = f"{voice_name}.wav"
+        out_path = os.path.join(args.output_dir, filename)
+        if not os.path.isfile(out_path):
+            urllib.request.urlretrieve(url, out_path)
+        entry = voices.get(voice_name, {}) if isinstance(voices.get(voice_name), dict) else {}
+        entry.setdefault("prompt_audio", os.path.join(args.output_dir, filename))
+        entry.setdefault("prompt_text", prompt_text)
+        entry.setdefault("source_url", url)
+        entry.setdefault("style_label", type_label)
+        entry.setdefault("category", "context-aware")
+        voices[voice_name] = entry
+
     with open(args.voices_file, "w", encoding="utf-8") as f:
         json.dump(voices, f, ensure_ascii=False, indent=2)
 
     print(f"Downloaded {len(unique_entries)} prompt voices to {args.output_dir}")
+    if context_entries:
+        print(f"Downloaded {len(context_entries)} context-aware voices to {args.output_dir}")
     print(f"Updated {args.voices_file}")
 
 
