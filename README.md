@@ -174,6 +174,86 @@ python infer.py --voice default --text "使用预置音色" --output preset.wav
 
 修改 `voices.json` 可以添加你自己的音色。自定义参考音色可以放到 `clone_reference/`，然后用 `--prompt-audio/--prompt-text` 进行克隆。
 
+## 在其他项目中调用（CLI）
+
+在你的项目里生成临时 config 并直接调用本仓库的 `infer.py`：
+
+```python
+import json
+import subprocess
+
+cfg = {
+  "models_dir": "/path/ONNX_Lab/models/onnx_models_quantized",
+  "voxcpm_dir": "/path/ONNX_Lab/models/VoxCPM1.5",
+  "voices_file": "/path/your_project/voices.json",
+  "voice": "default",
+  "prompt_audio": None,
+  "prompt_text": None,
+  "text": "你好，这是测试。",
+  "output": "out.wav"
+}
+
+with open("tmp_config.json", "w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+subprocess.run(["python", "/path/ONNX_Lab/infer.py", "--config", "tmp_config.json"], check=True)
+```
+
+语音克隆时把 `voice` 设为 `null`，同时提供 `prompt_audio` + `prompt_text` 即可。
+`voices.json` 中的相对路径会相对它自身所在目录解析。
+
+## API 服务（FastAPI）
+
+推荐：上传参考音频时用 **multipart**，仅使用预置音色时用 **JSON**。
+
+安装：
+
+```bash
+uv pip install -r requirements-api.txt
+```
+
+启动：
+
+```bash
+uv run uvicorn api_server:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+环境变量（可选）：
+
+```bash
+export VOXCPM_MODELS_DIR=/path/ONNX_Lab/models/onnx_models_quantized
+export VOXCPM_VOXCPM_DIR=/path/ONNX_Lab/models/VoxCPM1.5
+export VOXCPM_VOICES_FILE=/path/your_project/voices.json
+export VOXCPM_MAX_CONCURRENCY=1
+```
+
+多用户建议：提高 `VOXCPM_MAX_CONCURRENCY` 或使用 `uvicorn --workers N`（每个 worker 会加载一份模型，占用更多内存）。
+
+JSON 请求示例（预置音色）：
+
+```bash
+curl -X POST http://localhost:8000/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{"text":"你好，这是测试。","voice":"default"}' \
+  --output out.wav
+```
+
+multipart 请求示例（语音克隆）：
+
+```bash
+curl -X POST http://localhost:8000/synthesize-file \
+  -F "text=这是语音克隆测试。" \
+  -F "prompt_text=参考语音的文字内容" \
+  -F "prompt_audio=@/path/to/prompt.wav" \
+  --output cloned.wav
+```
+
+可用接口：
+- `GET /health`
+- `GET /voices`
+- `POST /synthesize`
+- `POST /synthesize-file`
+
 ## 配置文件 (config.json)
 
 `config.json` 是运行时配置（不是 ONNX 配置），必须是 **纯 JSON**。
@@ -324,3 +404,9 @@ jobs:
           chmod +x run_service.sh
           ./run_service.sh
 ```
+
+## Credits
+
+- Text-to-Speech-TTS-ONNX: https://github.com/DakeQQ/Text-to-Speech-TTS-ONNX
+- VoxCPM-ONNX: https://github.com/bluryar/VoxCPM-ONNX
+- VoxCPM (official): https://github.com/OpenBMB/VoxCPM
