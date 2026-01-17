@@ -1,6 +1,9 @@
 {
+  "model_size": "1.5b",
   "models_dir": "models/onnx_models",
+  "models_dir_05b": "models/onnx_models_05b",
   "voxcpm_dir": "models/VoxCPM1.5",
+  "voxcpm_dir_05b": "models/VoxCPM0.5",
   "voice": "trump_promptvn",
   "prompt_audio": null,
   "prompt_text": null,
@@ -11,7 +14,7 @@
   "output": "outputs/demo.wav",
   "text_normalizer": true,
   "audio_normalizer": false,
-  "cfg_value": 2.2,
+  "cfg_value": 2.5,
   "fixed_timesteps": 10,
   "seed": 1,
   "max_threads": 0

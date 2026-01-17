@@ -19,16 +19,23 @@ ONNX_Lab 致力于打造简单易用的强大开源 TTS 模型的 ONNX CPU 运�
 ├── infer.py
 ├── config.json
 ├── voices.json
-├── reference/                   # 官方示例音色 (prompt audio)
-├── clone_reference/             # 用户自定义参考音色
+├── api_server.py                # FastAPI 服务（支持流式输出）
+├── engines/                      # 引擎抽象层
+│   ├── __init__.py
+│   ├── base.py                   # 抽象基类
+│   ├── voxcpm_15b.py             # 1.5B 引擎
+│   └── voxcpm_05b.py             # 0.5B 引擎（实验性）
+├── reference/                    # 官方示例音色 (prompt audio)
+├── clone_reference/              # 用户自定义参考音色
 ├── download_reference_voices.py
 ├── run_service.sh
 ├── modeling_modified/
-├── VoxCPM/                      # 官方源码（用于导出）
+├── VoxCPM/                       # 官方源码（用于导出）
 ├── models/
-│   ├── VoxCPM1.5/                 # 官方权重 + tokenizer/config
-│   ├── onnx_models/               # 导出的全精度 ONNX（推荐用于生产环境）
-│   └── onnx_models_quantized/     # CPU 量化后的 ONNX（实验性，某些平台可能不兼容）
+│   ├── VoxCPM1.5/                # 官方权重 + tokenizer/config
+│   ├── onnx_models/              # 导出的全精度 ONNX（推荐用于生产环境）
+│   ├── onnx_models_05b/          # 0.5B ONNX（实验性）
+│   └── onnx_models_quantized/    # CPU 量化后的 ONNX（实验性）
 ```
 
 
@@ -229,6 +236,8 @@ subprocess.run(["python", "/path/ONNX_Lab/infer.py", "--config", "tmp_config.jso
 
 推荐：上传参考音频时用 **multipart**，仅使用预置音色时用 **JSON**。
 
+> ⚡ **新增**：支持流式输出 (`/synthesize-stream`)，可实现低延迟实时 TTS 播放。
+
 安装：
 
 ```bash
@@ -238,7 +247,7 @@ uv pip install -r requirements-api.txt
 启动：
 
 ```bash
-uv run uvicorn api_server:app --host 0.0.0.0 --port 8000 --workers 1
+uv run python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
 ```
 
 环境变量（可选）：
@@ -256,7 +265,18 @@ export VOXCPM_MAX_CONCURRENCY=1
 
 多用户建议：提高 `VOXCPM_MAX_CONCURRENCY` 或使用 `uvicorn --workers N`（每个 worker 会加载一份模型，占用更多内存）。
 
-JSON 请求示例（预置音色）：
+### API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/info` | GET | 获取音频参数 (sample_rate, bit_depth, channels) |
+| `/voices` | GET | 列出可用音色 |
+| `/synthesize` | POST | 合成语音，返回 WAV 文件 |
+| `/synthesize-file` | POST | 支持上传参考音频的合成 |
+| `/synthesize-stream` | POST | **流式输出** Raw PCM (int16)，适合实时播放 |
+
+### JSON 请求示例（预置音色）
 
 ```bash
 curl -X POST http://localhost:8000/synthesize \
@@ -265,7 +285,29 @@ curl -X POST http://localhost:8000/synthesize \
   --output out.wav
 ```
 
-multipart 请求示例（语音克隆）：
+### 流式输出示例
+
+```bash
+# 获取音频参数
+curl -s http://localhost:8000/info
+# 返回: {"sample_rate": 44100, "bit_depth": 16, "channels": 1}
+
+# 流式合成（返回 Raw PCM）
+curl -X POST http://localhost:8000/synthesize-stream \
+  -H "Content-Type: application/json" \
+  -d '{"text":"这是流式输出测试"}' \
+  --output stream.pcm
+
+# 播放 PCM (Mac/Linux)
+ffplay -f s16le -ar 44100 -ac 1 stream.pcm
+```
+
+响应头包含音频格式信息：
+- `X-Sample-Rate`: 采样率 (44100)
+- `X-Bit-Depth`: 位深 (16)
+- `X-Channels`: 声道数 (1)
+
+### multipart 请求示例（语音克隆）
 
 ```bash
 curl -X POST http://localhost:8000/synthesize-file \
@@ -275,11 +317,38 @@ curl -X POST http://localhost:8000/synthesize-file \
   --output cloned.wav
 ```
 
-可用接口：
-- `GET /health`
-- `GET /voices`
-- `POST /synthesize`
-- `POST /synthesize-file`
+### Python 客户端示例（流式播放）
+
+```python
+import requests
+import pyaudio
+
+# 获取音频参数
+info = requests.get("http://localhost:8000/info").json()
+print(f"Sample rate: {info['sample_rate']}Hz")
+
+# 初始化 PyAudio
+p = pyaudio.PyAudio()
+stream = p.open(
+    format=pyaudio.paInt16,
+    channels=info['channels'],
+    rate=info['sample_rate'],
+    output=True
+)
+
+# 流式播放
+with requests.post(
+    "http://localhost:8000/synthesize-stream",
+    json={"text": "实时流式播放测试"},
+    stream=True
+) as r:
+    for chunk in r.iter_content(chunk_size=4096):
+        stream.write(chunk)
+
+stream.stop_stream()
+stream.close()
+p.terminate()
+```
 
 ## 配置文件 (config.json)
 
@@ -309,6 +378,7 @@ curl -X POST http://localhost:8000/synthesize-file \
 - `fixed_timesteps`: 解码步数（越高越慢，可能更稳）。常用 8~12。
 - `seed`: 随机种子（用于可复现性）。
 - `max_threads`: ONNXRuntime CPU 线程数（`0` = 自动；GitHub Actions 可设 2）。
+- `model_size`: 模型大小选择（`"1.5b"` 或 `"0.5b"`）。⚠️ **0.5B 目前为实验性功能**。
 
 > 语言支持：模型以中文/英文为主，其他语言不保证效果。
 

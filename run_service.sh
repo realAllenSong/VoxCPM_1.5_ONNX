@@ -246,6 +246,33 @@ fi
 
 mkdir -p outputs
 
-uv run --python "$VENV_PYTHON" python infer.py --config config.json
+# Read model_size from config.json
+MODEL_SIZE=$(uv run --python "$VENV_PYTHON" python -c "import json; print(json.load(open('config.json')).get('model_size', '1.5b').lower())" 2>/dev/null || echo "1.5b")
+
+echo "Model size from config.json: $MODEL_SIZE"
+
+if [[ "$MODEL_SIZE" == "0.5b" || "$MODEL_SIZE" == "05b" ]]; then
+  echo "Running 0.5B model via engines abstraction..."
+  
+  # Check if 0.5B models exist
+  if [[ ! -f "models/onnx_models_05b/voxcpm_prefill.onnx" ]]; then
+    echo "0.5B ONNX models not found. Downloading from HuggingFace..."
+    uv run --python "$VENV_PYTHON" python -c "
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id='bluryar/voxcpm-onnx',
+    local_dir='./models/onnx_models_05b',
+    allow_patterns=['*.onnx', '*.onnx.data', 'tokenizer.json'],
+)
+print('Download complete!')
+"
+  fi
+  
+  # Run 0.5B test script
+  uv run --python "$VENV_PYTHON" python test_05b.py
+else
+  echo "Running 1.5B model..."
+  uv run --python "$VENV_PYTHON" python infer.py --config config.json
+fi
 
 echo "Done. Output: outputs/demo.wav"

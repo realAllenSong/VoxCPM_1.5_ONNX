@@ -1,80 +1,49 @@
+"""VoxCPM 1.5B ONNX Engine.
+
+This engine uses the 8-file ONNX architecture for VoxCPM 1.5B model.
+Refactored from the original api_server.py VoxCPMEngine class.
+"""
+
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import queue
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import Generator, List
 
 import numpy as np
 import onnxruntime as ort
 import soundfile as sf
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel
 from transformers import LlamaTokenizerFast
 
+from .base import BaseEngine
+
+# Import utilities from infer.py
 import infer as voxcpm_infer
 
 
-def parse_bool(value: str | None) -> bool | None:
-    if value is None:
-        return None
-    lowered = value.strip().lower()
-    if lowered in {"1", "true", "yes", "y"}:
-        return True
-    if lowered in {"0", "false", "no", "n"}:
-        return False
-    raise ValueError(f"Invalid boolean value: {value}")
+class VoxCPM15BEngine(BaseEngine):
+    """VoxCPM 1.5B ONNX inference engine.
+    
+    Uses 8 ONNX files:
+    - VoxCPM_Text_Embed.onnx
+    - VoxCPM_VAE_Encoder.onnx
+    - VoxCPM_Feat_Encoder.onnx
+    - VoxCPM_Feat_Cond.onnx
+    - VoxCPM_Concat.onnx
+    - VoxCPM_Main.onnx
+    - VoxCPM_Feat_Decoder.onnx
+    - VoxCPM_VAE_Decoder.onnx
+    """
 
-
-def parse_text_value(value: str | List[str]) -> List[str]:
-    if isinstance(value, list):
-        texts = [str(item).strip() for item in value if str(item).strip()]
-        return texts
-    if not isinstance(value, str):
-        raise ValueError("text must be a string or list of strings")
-    text = value.strip()
-    if not text:
-        return []
-    if text.startswith("["):
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            parsed = None
-        if isinstance(parsed, list):
-            return [str(item).strip() for item in parsed if str(item).strip()]
-    if "\n" in text:
-        return [line.strip() for line in text.splitlines() if line.strip()]
-    return [text]
-
-
-class SynthesisRequest(BaseModel):
-    text: str | List[str]
-    voice: str | None = None
-    prompt_text: str | None = None
-    prompt_audio_path: str | None = None
-    voices_file: str | None = None
-    cfg_value: float | None = None
-    fixed_timesteps: int | None = None
-    seed: int | None = None
-    text_normalizer: bool | None = None
-    audio_normalizer: bool | None = None
-    chunk_tokens: int | None = None  # For streaming: tokens per chunk
-
-
-class VoxCPMEngine:
     def __init__(
         self,
         models_dir: str,
         voxcpm_dir: str,
         voices_file: str,
-        onnx_config: str | None,
-        max_threads: int,
-        text_normalizer: bool,
-        audio_normalizer: bool,
+        onnx_config: str | None = None,
+        max_threads: int = 0,
+        text_normalizer: bool = True,
+        audio_normalizer: bool = False,
     ) -> None:
         self.models_dir = models_dir
         self.voxcpm_dir = voxcpm_dir
@@ -99,14 +68,14 @@ class VoxCPMEngine:
         self.half_decode_len = int(config.get("half_decode_len", 7056))
         self.blank_duration = float(config.get("blank_duration", 0.1))
 
-        self.text_normalizer = None
+        self._text_normalizer = None
         if self.default_text_normalizer:
             if voxcpm_infer.TextNormalizer is None:
                 raise RuntimeError(
                     "TextNormalizer unavailable. Install dependencies: pip install wetext regex inflect "
                     f"(error: {voxcpm_infer.TEXT_NORMALIZER_IMPORT_ERROR})"
                 )
-            self.text_normalizer = voxcpm_infer.TextNormalizer()
+            self._text_normalizer = voxcpm_infer.TextNormalizer()
 
         self.device_type = "cpu"
         self.device_id = 0
@@ -115,6 +84,18 @@ class VoxCPMEngine:
         self.tokenizer = voxcpm_infer.mask_multichar_chinese_tokens(
             LlamaTokenizerFast.from_pretrained(self.voxcpm_dir)
         )
+
+    @property
+    def sample_rate(self) -> int:
+        return self.out_sample_rate
+
+    @property
+    def bit_depth(self) -> int:
+        return 16
+
+    @property
+    def channels(self) -> int:
+        return 1
 
     def _init_sessions(self, max_threads: int) -> None:
         session_opts = ort.SessionOptions()
@@ -235,16 +216,16 @@ class VoxCPMEngine:
     def synthesize(
         self,
         texts: List[str],
-        voice: str | None,
-        prompt_audio: str | None,
-        prompt_text: str | None,
-        voices_file: str | None,
-        cfg_value: float | None,
-        fixed_timesteps: int | None,
-        seed: int | None,
-        streaming: bool,
-        use_text_normalizer: bool | None,
-        use_audio_normalizer: bool | None,
+        voice: str | None = None,
+        prompt_audio: str | None = None,
+        prompt_text: str | None = None,
+        voices_file: str | None = None,
+        cfg_value: float | None = None,
+        fixed_timesteps: int | None = None,
+        seed: int | None = None,
+        streaming: bool = False,
+        use_text_normalizer: bool | None = None,
+        use_audio_normalizer: bool | None = None,
     ) -> tuple[np.ndarray, int]:
         if not texts:
             raise ValueError("No text provided")
@@ -265,7 +246,7 @@ class VoxCPMEngine:
         ort.set_seed(seed)
 
         use_text_normalizer = self.default_text_normalizer if use_text_normalizer is None else use_text_normalizer
-        if use_text_normalizer and self.text_normalizer is None:
+        if use_text_normalizer and self._text_normalizer is None:
             raise RuntimeError("TextNormalizer unavailable")
         use_audio_normalizer = self.default_audio_normalizer if use_audio_normalizer is None else use_audio_normalizer
 
@@ -306,7 +287,7 @@ class VoxCPMEngine:
             init_feat_cond = self.ort_session_D.run_with_ort_values(self.out_name_D, input_feed_D)[0]
 
             if use_text_normalizer and prompt_text:
-                prompt_text = self.text_normalizer.normalize(prompt_text)
+                prompt_text = self._text_normalizer.normalize(prompt_text)
 
             prompt_ids = np.array([self.tokenizer(prompt_text)], dtype=np.int32)
             prompt_text_len = int(prompt_ids.shape[-1])
@@ -322,7 +303,7 @@ class VoxCPMEngine:
 
         for sentence in texts:
             if use_text_normalizer:
-                sentence = self.text_normalizer.normalize(sentence)
+                sentence = self._text_normalizer.normalize(sentence)
 
             target_ids = np.array([self.tokenizer(sentence)], dtype=np.int32)
             input_feed_A[self.in_name_A] = ort.OrtValue.ortvalue_from_numpy(target_ids, self.device_type, self.device_id)
@@ -463,331 +444,214 @@ class VoxCPMEngine:
 
         return audio_out, self.out_sample_rate
 
+    def synthesize_stream(
+        self,
+        texts: List[str],
+        voice: str | None = None,
+        prompt_audio: str | None = None,
+        prompt_text: str | None = None,
+        voices_file: str | None = None,
+        cfg_value: float | None = None,
+        fixed_timesteps: int | None = None,
+        seed: int | None = None,
+        use_text_normalizer: bool | None = None,
+        use_audio_normalizer: bool | None = None,
+        chunk_tokens: int = 4,
+    ) -> Generator[bytes, None, None]:
+        """Streaming synthesis - yields PCM chunks as they are generated."""
+        if not texts:
+            raise ValueError("No text provided")
 
-def build_engine_queue() -> tuple[queue.Queue, ThreadPoolExecutor]:
-    models_dir = os.getenv("VOXCPM_MODELS_DIR", os.path.join(os.getcwd(), "models", "onnx_models"))
-    voxcpm_dir = os.getenv("VOXCPM_VOXCPM_DIR", os.path.join(os.getcwd(), "models", "VoxCPM1.5"))
-    voices_file = os.getenv("VOXCPM_VOICES_FILE", os.path.join(os.getcwd(), "voices.json"))
-    onnx_config = os.getenv("VOXCPM_ONNX_CONFIG")
-    max_threads = int(os.getenv("VOXCPM_MAX_THREADS", "0"))
-    text_normalizer = os.getenv("VOXCPM_TEXT_NORMALIZER", "true").lower() in {"1", "true", "yes", "y"}
-    audio_normalizer = os.getenv("VOXCPM_AUDIO_NORMALIZER", "false").lower() in {"1", "true", "yes", "y"}
-    max_concurrency = int(os.getenv("VOXCPM_MAX_CONCURRENCY", "1"))
+        voices_file = voices_file or self.voices_file
+        if voice:
+            if prompt_audio or prompt_text:
+                raise ValueError("Use either voice or prompt_audio/prompt_text")
+            prompt_audio, prompt_text = voxcpm_infer.resolve_voice_prompt(voices_file, voice)
+        if (prompt_audio is None) != (prompt_text is None):
+            raise ValueError("prompt_audio and prompt_text must both be provided or both be omitted")
 
-    engine_queue = queue.Queue()
-    for _ in range(max_concurrency):
-        engine_queue.put(
-            VoxCPMEngine(
-                models_dir=models_dir,
-                voxcpm_dir=voxcpm_dir,
-                voices_file=voices_file,
-                onnx_config=onnx_config,
-                max_threads=max_threads,
-                text_normalizer=text_normalizer,
-                audio_normalizer=audio_normalizer,
-            )
-        )
+        voxcpm_infer.ensure_paths(self.models_dir, self.voxcpm_dir, prompt_audio)
 
-    executor = ThreadPoolExecutor(max_workers=max_concurrency)
-    return engine_queue, executor
+        cfg_value = float(cfg_value if cfg_value is not None else self.cfg_value)
+        fixed_timesteps = int(fixed_timesteps if fixed_timesteps is not None else self.fixed_timesteps)
+        seed = int(seed if seed is not None else self.random_seed)
+        ort.set_seed(seed)
 
+        use_text_normalizer = self.default_text_normalizer if use_text_normalizer is None else use_text_normalizer
+        if use_text_normalizer and self._text_normalizer is None:
+            raise RuntimeError("TextNormalizer unavailable")
+        use_audio_normalizer = self.default_audio_normalizer if use_audio_normalizer is None else use_audio_normalizer
 
-ENGINE_QUEUE: queue.Queue[VoxCPMEngine]
-EXECUTOR: ThreadPoolExecutor
+        cfg_value_tensor = ort.OrtValue.ortvalue_from_numpy(np.array([cfg_value], dtype=self.model_dtype_G), self.device_type, self.device_id)
+        cfg_value_minus = ort.OrtValue.ortvalue_from_numpy(np.array([1.0 - cfg_value], dtype=self.model_dtype_G), self.device_type, self.device_id)
 
-app = FastAPI(title="VoxCPM ONNX API", version="1.0")
+        timesteps = fixed_timesteps - 1
+        init_cfm_steps = ort.OrtValue.ortvalue_from_numpy(np.array([0], dtype=np.int32), self.device_type, self.device_id)
+        blank_segment = np.zeros((1, 1, int(self.out_sample_rate * self.blank_duration)), dtype=np.int16)
 
+        input_feed_A = {}
+        input_feed_B = {}
+        input_feed_C = {}
+        input_feed_D = {}
+        input_feed_E = {}
+        input_feed_F = {}
+        input_feed_G = {}
+        input_feed_H = {}
 
-@app.on_event("startup")
-def on_startup() -> None:
-    global ENGINE_QUEUE, EXECUTOR
-    ENGINE_QUEUE, EXECUTOR = build_engine_queue()
+        input_feed_G[self.in_name_G[4]] = cfg_value_tensor
+        input_feed_G[self.in_name_G[5]] = cfg_value_minus
 
+        if prompt_audio:
+            audio = voxcpm_infer.read_audio_mono_int16(prompt_audio, self.in_sample_rate, self.max_prompt_audio_len)
+            if use_audio_normalizer:
+                audio = voxcpm_infer.audio_normalizer(audio)
+            audio = ort.OrtValue.ortvalue_from_numpy(audio.reshape(1, 1, -1), self.device_type, self.device_id)
+            use_prompt_audio = True
+        else:
+            use_prompt_audio = False
+            prompt_text = None
 
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    EXECUTOR.shutdown(wait=False)
+        if use_prompt_audio:
+            input_feed_B[self.in_name_B] = audio
+            audio_feat = self.ort_session_B.run_with_ort_values(self.out_name_B, input_feed_B)[0]
 
+            input_feed_D[self.in_name_D] = audio_feat
+            init_feat_cond = self.ort_session_D.run_with_ort_values(self.out_name_D, input_feed_D)[0]
 
-@app.get("/health")
-def health() -> dict:
-    return {"status": "ok"}
+            if use_text_normalizer and prompt_text:
+                prompt_text = self._text_normalizer.normalize(prompt_text)
 
+            prompt_ids = np.array([self.tokenizer(prompt_text)], dtype=np.int32)
+            prompt_text_len = int(prompt_ids.shape[-1])
+            input_feed_A[self.in_name_A] = ort.OrtValue.ortvalue_from_numpy(prompt_ids, self.device_type, self.device_id)
+            prompt_embed = self.ort_session_A.run_with_ort_values(self.out_name_A, input_feed_A)[0]
+        else:
+            init_feat_cond = self.init_feat_cond_0
+            prompt_text_len = 0
+            prompt_embed = None
+            audio_feat = None
 
-@app.get("/voices")
-def list_voices(voices_file: str | None = None) -> dict:
-    target = voices_file or os.getenv("VOXCPM_VOICES_FILE") or os.path.join(os.getcwd(), "voices.json")
-    voices = voxcpm_infer.load_voice_presets(target)
-    return {"voices": sorted(voices.keys())}
+        for sentence in texts:
+            if use_text_normalizer:
+                sentence = self._text_normalizer.normalize(sentence)
 
+            target_ids = np.array([self.tokenizer(sentence)], dtype=np.int32)
+            input_feed_A[self.in_name_A] = ort.OrtValue.ortvalue_from_numpy(target_ids, self.device_type, self.device_id)
+            target_embed = self.ort_session_A.run_with_ort_values(self.out_name_A, input_feed_A)[0]
 
-def synthesize_to_file(
-    request_texts: List[str],
-    voice: str | None,
-    prompt_audio: str | None,
-    prompt_text: str | None,
-    voices_file: str | None,
-    cfg_value: float | None,
-    fixed_timesteps: int | None,
-    seed: int | None,
-    text_normalizer: bool | None,
-    audio_normalizer: bool | None,
-    output_path: str,
-) -> str:
-    engine = ENGINE_QUEUE.get()
-    try:
-        audio_out, sample_rate = engine.synthesize(
-            texts=request_texts,
-            voice=voice,
-            prompt_audio=prompt_audio,
-            prompt_text=prompt_text,
-            voices_file=voices_file,
-            cfg_value=cfg_value,
-            fixed_timesteps=fixed_timesteps,
-            seed=seed,
-            streaming=False,
-            use_text_normalizer=text_normalizer,
-            use_audio_normalizer=audio_normalizer,
-        )
-        sf.write(output_path, audio_out, sample_rate, format="WAV", subtype="PCM_16")
-        return output_path
-    finally:
-        ENGINE_QUEUE.put(engine)
+            if use_prompt_audio:
+                input_feed_E[self.in_name_E[0]] = prompt_embed
+                input_feed_E[self.in_name_E[1]] = target_embed
+                target_embed, _ = self.ort_session_E.run_with_ort_values(self.out_name_E, input_feed_E)
 
+            input_feed_E[self.in_name_E[0]] = target_embed
+            input_feed_E[self.in_name_E[1]] = self.audio_start_embed
+            concat_embed, concat_text_len = self.ort_session_E.run_with_ort_values(self.out_name_E, input_feed_E)
 
-@app.post("/synthesize")
-async def synthesize_json(request: SynthesisRequest, background_tasks: BackgroundTasks):
-    texts = parse_text_value(request.text)
-    if not texts:
-        raise HTTPException(status_code=400, detail="text is required")
+            if use_prompt_audio:
+                input_feed_C[self.in_name_C] = audio_feat
+                feat_embed = self.ort_session_C.run_with_ort_values(self.out_name_C, input_feed_C)[0]
 
-    output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    output_path = output_file.name
-    output_file.close()
+                input_feed_E[self.in_name_E[0]] = concat_embed
+                input_feed_E[self.in_name_E[1]] = feat_embed
+                concat_embed, ids_len = self.ort_session_E.run_with_ort_values(self.out_name_E, input_feed_E)
+            else:
+                feat_embed = self.init_feat_embed
+                ids_len = concat_text_len
 
-    loop = asyncio.get_running_loop()
-    try:
-        await loop.run_in_executor(
-            EXECUTOR,
-            synthesize_to_file,
-            texts,
-            request.voice,
-            request.prompt_audio_path,
-            request.prompt_text,
-            request.voices_file,
-            request.cfg_value,
-            request.fixed_timesteps,
-            request.seed,
-            request.text_normalizer,
-            request.audio_normalizer,
-            output_path,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+            concat_text_len_val = int(concat_text_len.numpy().item())
+            ids_len_val = int(ids_len.numpy().item())
+            max_len = min((concat_text_len_val - prompt_text_len) * self.decode_limit_factor + 10, self.generate_limit - ids_len_val)
+            if max_len <= 0:
+                continue
 
-    background_tasks.add_task(os.remove, output_path)
-    return FileResponse(output_path, media_type="audio/wav", filename="output.wav", background=background_tasks)
+            input_feed_F[self.in_name_F[self.num_keys_values]] = self.init_history_len
+            input_feed_F[self.in_name_F[self.num_keys_values_plus_1]] = feat_embed
+            input_feed_F[self.in_name_F[self.num_keys_values_plus_2]] = concat_text_len
+            input_feed_F[self.in_name_F[self.num_keys_values_plus_3]] = concat_embed
+            input_feed_F[self.in_name_F[self.num_keys_values_plus_4]] = ids_len
+            input_feed_F[self.in_name_F[self.num_keys_values_plus_5]] = self.init_attention_mask_1
 
+            for i in range(self.num_layers):
+                input_feed_F[self.in_name_F[i]] = self.init_past_keys_F
+            for i in range(self.num_layers, self.num_keys_values):
+                input_feed_F[self.in_name_F[i]] = self.init_past_values_F
 
-@app.post("/synthesize-file")
-async def synthesize_file(
-    background_tasks: BackgroundTasks,
-    text: str = Form(...),
-    voice: str | None = Form(None),
-    prompt_text: str | None = Form(None),
-    voices_file: str | None = Form(None),
-    cfg_value: float | None = Form(None),
-    fixed_timesteps: int | None = Form(None),
-    seed: int | None = Form(None),
-    text_normalizer: str | None = Form(None),
-    audio_normalizer: str | None = Form(None),
-    prompt_audio: UploadFile | None = File(None),
-):
-    try:
-        texts = parse_text_value(text)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+            feat_cond = init_feat_cond
+            
+            # Buffering for streaming - accumulate latents before decoding
+            latent_buffer = []
+            pre_latent_pred = None
 
-    prompt_audio_path = None
-    if prompt_audio is not None:
-        suffix = os.path.splitext(prompt_audio.filename or "")[1] or ".wav"
-        tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        prompt_audio_path = tmp_audio.name
-        tmp_audio.write(await prompt_audio.read())
-        tmp_audio.close()
-        background_tasks.add_task(os.remove, prompt_audio_path)
+            num_decode = 0
+            while num_decode < max_len:
+                all_outputs_F = self.ort_session_F.run_with_ort_values(self.out_name_F, input_feed_F)
 
-    try:
-        text_normalizer_value = parse_bool(text_normalizer)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+                input_feed_G[self.in_name_G[0]] = init_cfm_steps
+                input_feed_G[self.in_name_G[1]] = all_outputs_F[self.num_keys_values_plus_1]
+                input_feed_G[self.in_name_G[2]] = all_outputs_F[self.num_keys_values_plus_2]
+                input_feed_G[self.in_name_G[3]] = feat_cond
 
-    try:
-        audio_normalizer_value = parse_bool(audio_normalizer)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+                for _ in range(timesteps):
+                    all_outputs_G = self.ort_session_G.run_with_ort_values(self.out_name_G, input_feed_G)
+                    input_feed_G[self.in_name_G[0]] = all_outputs_G[0]
+                    input_feed_G[self.in_name_G[1]] = all_outputs_G[1]
 
-    output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    output_path = output_file.name
-    output_file.close()
+                latent_pred = all_outputs_G[1]
+                latent_buffer.append(latent_pred)
 
-    loop = asyncio.get_running_loop()
-    try:
-        await loop.run_in_executor(
-            EXECUTOR,
-            synthesize_to_file,
-            texts,
-            voice,
-            prompt_audio_path,
-            prompt_text,
-            voices_file,
-            cfg_value,
-            fixed_timesteps,
-            seed,
-            text_normalizer_value,
-            audio_normalizer_value,
-            output_path,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+                # Yield audio when we have accumulated enough tokens
+                if len(latent_buffer) >= chunk_tokens and pre_latent_pred is not None:
+                    # Decode accumulated latents
+                    for idx, lat in enumerate(latent_buffer):
+                        input_feed_E[self.in_name_E[0]] = pre_latent_pred
+                        input_feed_E[self.in_name_E[1]] = lat
+                        concat_lat, _ = self.ort_session_E.run_with_ort_values(self.out_name_E, input_feed_E)
+                        input_feed_H[self.in_name_H] = concat_lat
+                        audio_out, _ = self.ort_session_H.run_with_ort_values(self.out_name_H, input_feed_H)
+                        pre_latent_pred = lat
+                        audio_np = audio_out.numpy()
+                        if num_decode > chunk_tokens:
+                            audio_np = audio_np[..., self.half_decode_len:]
+                        yield audio_np.astype(np.int16).tobytes()
+                    latent_buffer = []
+                elif pre_latent_pred is None:
+                    pre_latent_pred = latent_pred
+                    latent_buffer = []
 
-    background_tasks.add_task(os.remove, output_path)
-    return FileResponse(output_path, media_type="audio/wav", filename="output.wav", background=background_tasks)
+                if num_decode >= self.min_seq_len:
+                    stop_id = int(all_outputs_F[self.num_keys_values_plus_3].numpy().item())
+                    if stop_id in voxcpm_infer.STOP_TOKEN:
+                        break
 
+                input_feed_C[self.in_name_C] = latent_pred
+                feat_embed = self.ort_session_C.run_with_ort_values(self.out_name_C, input_feed_C)[0]
 
-@app.exception_handler(ValueError)
-async def value_error_handler(_, exc: ValueError):
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+                input_feed_D[self.in_name_D] = latent_pred
+                feat_cond = self.ort_session_D.run_with_ort_values(self.out_name_D, input_feed_D)[0]
 
+                input_feed_F.update(zip(self.in_name_F[:self.num_keys_values_plus_1], all_outputs_F))
+                input_feed_F[self.in_name_F[self.num_keys_values_plus_1]] = feat_embed
+                input_feed_F[self.in_name_F[self.num_keys_values_plus_3]] = feat_embed
 
-@app.get("/info")
-def audio_info() -> dict:
-    """Get audio format information for client configuration.
-    
-    Returns sample rate, bit depth, and channels for configuring
-    audio playback (e.g., PyAudio).
-    """
-    # Peek at an engine without removing from queue
-    engine = ENGINE_QUEUE.queue[0]
-    return {
-        "sample_rate": engine.out_sample_rate,
-        "bit_depth": 16,
-        "channels": 1,
-        "format": "int16",
-    }
+                if num_decode < 1:
+                    input_feed_F[self.in_name_F[self.num_keys_values_plus_2]] = self.init_concat_text_len
+                    input_feed_F[self.in_name_F[self.num_keys_values_plus_4]] = self.init_ids_len_1
+                    input_feed_F[self.in_name_F[self.num_keys_values_plus_5]] = self.init_attention_mask_0
 
+                num_decode += 1
 
-def stream_generator(
-    texts: List[str],
-    voice: str | None,
-    prompt_audio: str | None,
-    prompt_text: str | None,
-    voices_file: str | None,
-    cfg_value: float | None,
-    fixed_timesteps: int | None,
-    seed: int | None,
-    text_normalizer: bool | None,
-    audio_normalizer: bool | None,
-    chunk_tokens: int,
-):
-    """Generator that yields audio chunks from the engine."""
-    engine = ENGINE_QUEUE.get()
-    try:
-        for chunk in engine.synthesize(
-            texts=texts,
-            voice=voice,
-            prompt_audio=prompt_audio,
-            prompt_text=prompt_text,
-            voices_file=voices_file,
-            cfg_value=cfg_value,
-            fixed_timesteps=fixed_timesteps,
-            seed=seed,
-            streaming=True,
-            use_text_normalizer=text_normalizer,
-            use_audio_normalizer=audio_normalizer,
-        ):
-            # For now, use non-streaming and yield the full result
-            # TODO: Implement proper streaming in VoxCPMEngine.synthesize
-            pass
-    except Exception:
-        ENGINE_QUEUE.put(engine)
-        raise
-    ENGINE_QUEUE.put(engine)
-    
-    # Fallback: Use synchronous synthesis and yield result as single chunk
-    engine = ENGINE_QUEUE.get()
-    try:
-        audio_out, sample_rate = engine.synthesize(
-            texts=texts,
-            voice=voice,
-            prompt_audio=prompt_audio,
-            prompt_text=prompt_text,
-            voices_file=voices_file,
-            cfg_value=cfg_value,
-            fixed_timesteps=fixed_timesteps,
-            seed=seed,
-            streaming=False,
-            use_text_normalizer=text_normalizer,
-            use_audio_normalizer=audio_normalizer,
-        )
-        yield audio_out.astype(np.int16).tobytes()
-    finally:
-        ENGINE_QUEUE.put(engine)
+            # Flush remaining latents
+            if latent_buffer and pre_latent_pred is not None:
+                for lat in latent_buffer:
+                    input_feed_E[self.in_name_E[0]] = pre_latent_pred
+                    input_feed_E[self.in_name_E[1]] = lat
+                    concat_lat, _ = self.ort_session_E.run_with_ort_values(self.out_name_E, input_feed_E)
+                    input_feed_H[self.in_name_H] = concat_lat
+                    audio_out, _ = self.ort_session_H.run_with_ort_values(self.out_name_H, input_feed_H)
+                    pre_latent_pred = lat
+                    audio_np = audio_out.numpy()[..., self.half_decode_len:]
+                    yield audio_np.astype(np.int16).tobytes()
 
-
-@app.post("/synthesize-stream")
-async def synthesize_stream(request: SynthesisRequest):
-    """Stream raw PCM audio as it is generated.
-    
-    Returns raw PCM bytes (int16, mono) suitable for real-time playback.
-    Use the /info endpoint to get audio format parameters.
-    
-    Headers:
-        X-Sample-Rate: Audio sample rate (e.g., 44100 for 1.5B, 16000 for 0.5B)
-        X-Bit-Depth: Bits per sample (16)
-        X-Channels: Number of channels (1)
-    """
-    texts = parse_text_value(request.text)
-    if not texts:
-        raise HTTPException(status_code=400, detail="text is required")
-
-    chunk_tokens = request.chunk_tokens or 4
-    
-    # Get audio info for headers
-    engine = ENGINE_QUEUE.queue[0]
-    sample_rate = engine.out_sample_rate
-
-    def generate():
-        eng = ENGINE_QUEUE.get()
-        try:
-            audio_out, _ = eng.synthesize(
-                texts=texts,
-                voice=request.voice,
-                prompt_audio=request.prompt_audio_path,
-                prompt_text=request.prompt_text,
-                voices_file=request.voices_file,
-                cfg_value=request.cfg_value,
-                fixed_timesteps=request.fixed_timesteps,
-                seed=request.seed,
-                streaming=False,
-                use_text_normalizer=request.text_normalizer,
-                use_audio_normalizer=request.audio_normalizer,
-            )
-            # Yield audio in chunks for streaming response
-            chunk_size = sample_rate // 10  # ~100ms chunks
-            audio_bytes = audio_out.astype(np.int16).tobytes()
-            for i in range(0, len(audio_bytes), chunk_size * 2):  # *2 for int16
-                yield audio_bytes[i:i + chunk_size * 2]
-        finally:
-            ENGINE_QUEUE.put(eng)
-
-    return StreamingResponse(
-        generate(),
-        media_type="application/octet-stream",
-        headers={
-            "X-Sample-Rate": str(sample_rate),
-            "X-Bit-Depth": "16",
-            "X-Channels": "1",
-            "Content-Type": "application/octet-stream",
-        }
-    )
+            # Yield blank segment between sentences
+            yield blank_segment.astype(np.int16).tobytes()
