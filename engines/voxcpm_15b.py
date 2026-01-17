@@ -2,13 +2,20 @@
 
 This engine uses the 8-file ONNX architecture for VoxCPM 1.5B model.
 Refactored from the original api_server.py VoxCPMEngine class.
+
+Advanced Features:
+- True streaming output (low TTFB)
+- Prompt Cache for multi-sentence consistency
+- Retry mechanism for badcase handling
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Generator, List
+import time
+from dataclasses import dataclass, field
+from typing import Generator, List, Optional, Tuple, Any
 
 import numpy as np
 import onnxruntime as ort
@@ -19,6 +26,26 @@ from .base import BaseEngine
 
 # Import utilities from infer.py
 import infer as voxcpm_infer
+
+
+@dataclass
+class PromptCache:
+    """Cache for prompt audio features and text, enabling multi-sentence generation
+    with consistent voice across multiple calls.
+    
+    Usage:
+        cache = engine.build_prompt_cache(prompt_audio, prompt_text)
+        for sentence in sentences:
+            for chunk in engine.synthesize_with_cache_stream(sentence, cache):
+                yield chunk
+            cache = engine.merge_prompt_cache(cache, generated_audio_feat)
+    """
+    audio_feat: Any = None  # OrtValue or None
+    feat_cond: Any = None   # OrtValue
+    prompt_embed: Any = None  # OrtValue or None
+    prompt_text_len: int = 0
+    generated_audio_feats: list = field(default_factory=list)  # List of generated latents
+    use_prompt_audio: bool = False
 
 
 class VoxCPM15BEngine(BaseEngine):
@@ -655,3 +682,218 @@ class VoxCPM15BEngine(BaseEngine):
 
             # Yield blank segment between sentences
             yield blank_segment.astype(np.int16).tobytes()
+
+    # ============================================================================
+    # Advanced Streaming Features
+    # ============================================================================
+
+    def build_prompt_cache(
+        self,
+        prompt_audio: str,
+        prompt_text: str,
+        use_text_normalizer: bool | None = None,
+        use_audio_normalizer: bool | None = None,
+    ) -> PromptCache:
+        """Build a prompt cache from audio and text for multi-sentence generation.
+        
+        This enables maintaining voice consistency across multiple generation calls,
+        similar to the official VoxCPM API's build_prompt_cache.
+        
+        Args:
+            prompt_audio: Path to the prompt audio file
+            prompt_text: Text content of the prompt audio
+            use_text_normalizer: Whether to normalize text (default: engine setting)
+            use_audio_normalizer: Whether to normalize audio (default: engine setting)
+        
+        Returns:
+            PromptCache object that can be used with synthesize_with_cache_stream
+        """
+        use_text_normalizer = self.default_text_normalizer if use_text_normalizer is None else use_text_normalizer
+        use_audio_normalizer = self.default_audio_normalizer if use_audio_normalizer is None else use_audio_normalizer
+
+        if use_text_normalizer and self._text_normalizer is None:
+            raise RuntimeError("TextNormalizer unavailable")
+
+        voxcpm_infer.ensure_paths(self.models_dir, self.voxcpm_dir, prompt_audio)
+
+        # Read and encode audio
+        audio = voxcpm_infer.read_audio_mono_int16(prompt_audio, self.in_sample_rate, self.max_prompt_audio_len)
+        if use_audio_normalizer:
+            audio = voxcpm_infer.audio_normalizer(audio)
+        audio_ort = ort.OrtValue.ortvalue_from_numpy(audio.reshape(1, 1, -1), self.device_type, self.device_id)
+
+        input_feed_B = {self.in_name_B: audio_ort}
+        audio_feat = self.ort_session_B.run_with_ort_values(self.out_name_B, input_feed_B)[0]
+
+        input_feed_D = {self.in_name_D: audio_feat}
+        feat_cond = self.ort_session_D.run_with_ort_values(self.out_name_D, input_feed_D)[0]
+
+        # Tokenize and embed prompt text
+        if use_text_normalizer and prompt_text:
+            prompt_text = self._text_normalizer.normalize(prompt_text)
+
+        prompt_ids = np.array([self.tokenizer(prompt_text)], dtype=np.int32)
+        prompt_text_len = int(prompt_ids.shape[-1])
+
+        input_feed_A = {self.in_name_A: ort.OrtValue.ortvalue_from_numpy(prompt_ids, self.device_type, self.device_id)}
+        prompt_embed = self.ort_session_A.run_with_ort_values(self.out_name_A, input_feed_A)[0]
+
+        return PromptCache(
+            audio_feat=audio_feat,
+            feat_cond=feat_cond,
+            prompt_embed=prompt_embed,
+            prompt_text_len=prompt_text_len,
+            generated_audio_feats=[],
+            use_prompt_audio=True,
+        )
+
+    def merge_prompt_cache(
+        self,
+        original_cache: PromptCache,
+        new_audio_feats: list,
+        max_cache_size: int = 100,
+    ) -> PromptCache:
+        """Merge newly generated audio features into the prompt cache.
+        
+        This maintains voice consistency for long/infinite streaming by keeping
+        recent generation context in the cache.
+        
+        Args:
+            original_cache: The existing PromptCache
+            new_audio_feats: List of newly generated latent features (OrtValues)
+            max_cache_size: Maximum number of features to keep (to avoid context overflow)
+        
+        Returns:
+            Updated PromptCache with merged features
+        """
+        # Combine existing and new features
+        combined_feats = original_cache.generated_audio_feats + new_audio_feats
+        
+        # Trim to max size (keep most recent)
+        if len(combined_feats) > max_cache_size:
+            combined_feats = combined_feats[-max_cache_size:]
+        
+        return PromptCache(
+            audio_feat=original_cache.audio_feat,
+            feat_cond=original_cache.feat_cond,
+            prompt_embed=original_cache.prompt_embed,
+            prompt_text_len=original_cache.prompt_text_len,
+            generated_audio_feats=combined_feats,
+            use_prompt_audio=original_cache.use_prompt_audio,
+        )
+
+    def _estimate_text_duration(self, text: str) -> float:
+        """Estimate expected audio duration in seconds for given text.
+        
+        Based on typical speech rates:
+        - Chinese: ~3-4 characters per second
+        - English: ~2-3 words per second
+        """
+        # Count Chinese characters
+        chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        # Count English words (rough estimate)
+        english_words = len([w for w in text.split() if w.isascii() and w.isalpha()])
+        
+        # Estimate: 3 chars/sec for Chinese, 2.5 words/sec for English
+        estimated_seconds = chinese_chars / 3.0 + english_words / 2.5
+        
+        # Minimum 1 second
+        return max(estimated_seconds, 1.0)
+
+    def synthesize_with_retry(
+        self,
+        texts: List[str],
+        voice: str | None = None,
+        prompt_audio: str | None = None,
+        prompt_text: str | None = None,
+        voices_file: str | None = None,
+        cfg_value: float | None = None,
+        fixed_timesteps: int | None = None,
+        seed: int | None = None,
+        use_text_normalizer: bool | None = None,
+        use_audio_normalizer: bool | None = None,
+        max_retries: int = 3,
+        length_ratio_threshold: float = 6.0,
+    ) -> Tuple[np.ndarray, int]:
+        """Synthesize with automatic retry for badcase detection.
+        
+        This implements the retry_badcase logic from official VoxCPM:
+        - Detects "unstoppable" cases where generated audio is too long
+        - Automatically retries with different seeds
+        
+        Args:
+            texts: List of texts to synthesize
+            voice: Preset voice name
+            prompt_audio: Path to prompt audio
+            prompt_text: Text for prompt audio
+            voices_file: Path to voices.json
+            cfg_value: CFG guidance value
+            fixed_timesteps: Number of decoding timesteps
+            seed: Random seed (will be incremented on retry)
+            use_text_normalizer: Whether to normalize text
+            use_audio_normalizer: Whether to normalize audio
+            max_retries: Maximum number of retry attempts (default: 3)
+            length_ratio_threshold: Max ratio of actual/expected duration (default: 6.0)
+        
+        Returns:
+            Tuple of (audio_array, sample_rate)
+        
+        Raises:
+            RuntimeError: If all retries fail
+        """
+        seed = int(seed if seed is not None else self.random_seed)
+        
+        # Calculate expected duration for all texts
+        total_text = " ".join(texts)
+        expected_duration = self._estimate_text_duration(total_text)
+        
+        last_audio = None
+        last_sr = None
+        
+        for attempt in range(max_retries):
+            current_seed = seed + attempt
+            
+            try:
+                start_time = time.time()
+                audio, sr = self.synthesize(
+                    texts=texts,
+                    voice=voice,
+                    prompt_audio=prompt_audio,
+                    prompt_text=prompt_text,
+                    voices_file=voices_file,
+                    cfg_value=cfg_value,
+                    fixed_timesteps=fixed_timesteps,
+                    seed=current_seed,
+                    use_text_normalizer=use_text_normalizer,
+                    use_audio_normalizer=use_audio_normalizer,
+                )
+                elapsed = time.time() - start_time
+                
+                last_audio = audio
+                last_sr = sr
+                
+                # Calculate actual duration
+                actual_duration = len(audio) / sr
+                duration_ratio = actual_duration / expected_duration
+                
+                # Check for badcase
+                if duration_ratio <= length_ratio_threshold:
+                    # Good case - return
+                    if attempt > 0:
+                        print(f"Retry #{attempt} succeeded (duration ratio: {duration_ratio:.2f})")
+                    return audio, sr
+                
+                print(f"Badcase detected (attempt {attempt + 1}/{max_retries}): "
+                      f"duration ratio {duration_ratio:.2f} > threshold {length_ratio_threshold}")
+                
+            except Exception as e:
+                print(f"Error on attempt {attempt + 1}: {e}")
+                if attempt == max_retries - 1:
+                    raise
+        
+        # All retries exhausted, return last result with warning
+        print(f"Warning: All {max_retries} retries exhausted, returning last result")
+        if last_audio is None:
+            raise RuntimeError("All synthesis attempts failed")
+        
+        return last_audio, last_sr

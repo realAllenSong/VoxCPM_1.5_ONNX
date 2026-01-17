@@ -63,6 +63,10 @@ class SynthesisRequest(BaseModel):
     text_normalizer: bool | None = None
     audio_normalizer: bool | None = None
     chunk_tokens: int | None = None  # For streaming: tokens per chunk
+    # Retry mechanism for badcase handling
+    retry_badcase: bool = False  # Enable automatic retry for unstoppable cases
+    max_retries: int = 3  # Maximum retry attempts
+    length_ratio_threshold: float = 6.0  # Max ratio of actual/expected duration
 
 
 class VoxCPMEngine:

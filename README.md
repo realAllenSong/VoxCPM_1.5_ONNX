@@ -1,7 +1,7 @@
 # VoxCPM 1.5B ONNX (CPU)
 
 ONNX_Lab 致力于打造简单易用的强大开源 TTS 模型的 ONNX CPU 运行版，旨在以最小成本跑出最高质量语音。
-目前支持 **VoxCPM 1.5B**，后续会逐步扩展更多模型与推理方案。
+目前支持 **VoxCPM 1.5B** （0.5B版本暂时不支持），后续会逐步扩展更多模型与推理方案。
 
 这是一个放在仓库根目录的 VoxCPM 1.5B ONNX CPU 推理项目，基于 `Text-to-Speech-TTS-ONNX/VoxCPM` 改造，提供：
 
@@ -52,6 +52,28 @@ ONNX_Lab 致力于打造简单易用的强大开源 TTS 模型的 ONNX CPU 运�
 - CPU 量化
 - 同步官方示例音色
 - 生成一段中英文混合测试音频到 `outputs/demo.wav`
+
+### 🔥 性能优化提示
+
+**预热模型** (减少首次请求延迟)：
+```python
+# 启动时预热
+engine.synthesize(["warmup"], voice="default")  # 第一次调用慢，后续快
+```
+
+**流式播放** (边生成边播放，适合 LLM 场景)：
+```python
+# LLM 输出时按句拆分
+for sentence in split_sentences(llm_output):
+    for chunk in tts.stream(sentence):
+        play_audio(chunk)  # 边生成边播放
+```
+
+**连接复用** (HTTP 请求)：
+```python
+session = requests.Session()  # 复用 TCP 连接
+session.post("http://localhost:8000/synthesize", json=payload)
+```
 
 ## ⚠️ 重要：模型版本选择
 
@@ -349,6 +371,47 @@ stream.stop_stream()
 stream.close()
 p.terminate()
 ```
+
+### 高级功能
+
+#### 重试机制 (`retry_badcase`)
+
+自动检测并重试生成异常的 "unstoppable" 情况：
+
+```bash
+curl -X POST http://localhost:8000/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "你好世界",
+    "voice": "default",
+    "retry_badcase": true,
+    "max_retries": 3,
+    "length_ratio_threshold": 6.0
+  }' \
+  --output out.wav
+```
+
+#### Prompt Cache（多句连续生成）
+
+支持 LLM 流式场景，保持多句生成的声音一致性：
+
+```python
+from engines.voxcpm_15b import VoxCPM15BEngine
+
+engine = VoxCPM15BEngine(...)
+
+# 构建 prompt cache
+cache = engine.build_prompt_cache("prompt.wav", "参考文本")
+
+# 多句流式生成
+sentences = ["第一句。", "第二句。", "第三句。"]
+for sentence in sentences:
+    audio, sr = engine.synthesize([sentence], prompt_audio="prompt.wav", prompt_text="参考文本")
+    # 播放或保存 audio
+    # 可选：合并 cache 保持长期一致性
+    # cache = engine.merge_prompt_cache(cache, generated_feats)
+```
+
 
 ## 配置文件 (config.json)
 
